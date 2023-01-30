@@ -10,10 +10,18 @@ from utils import APIException, generate_sitemap
 from admin import setup_admin
 from models import db, User, Character, Planet, Vehicle, Favourite
 import json
+
+#importacion de JWT
+from flask_jwt_extended import create_access_token, get_jwt_identity, jwt_required, JWTManager
+
 #from models import Person
 
 app = Flask(__name__)
 app.url_map.strict_slashes = False
+
+# Setup the Flask-JWT-Extended extension
+app.config["JWT_SECRET_KEY"] = "super-secret"  # Change this!
+jwt = JWTManager(app)
 
 db_url = os.getenv("DATABASE_URL")
 if db_url is not None:
@@ -26,6 +34,8 @@ MIGRATE = Migrate(app, db)
 db.init_app(app)
 CORS(app)
 setup_admin(app)
+
+
 
 # Handle/serialize errors like a JSON object
 @app.errorhandler(APIException)
@@ -66,6 +76,31 @@ def add_user():
         return jsonify({"msg":"Usuario creado correctamente."}), 200
     else:
         return jsonify({"msg":"El usuario ya existe"}), 400
+
+# Create a route to authenticate your users and return JWTs. The
+# create_access_token() function is used to actually generate the JWT.
+@app.route("/login", methods=["POST"])
+def login():
+    email = request.json.get("email", None)
+    password = request.json.get("password", None)
+    get_user = User.query.filter_by(email=email).first()
+    print(get_user.email)
+    if email != get_user.email or password != get_user.password:
+        return jsonify({"msg": "Bad username or password"}), 401
+
+    access_token = create_access_token(identity=email)
+    return jsonify(access_token=access_token)
+
+# Protect a route with jwt_required, which will kick out requests
+# without a valid JWT present.
+@app.route("/protected", methods=["GET"])
+@jwt_required()
+def protected():
+    # Access the identity of the current user with get_jwt_identity
+    current_user = get_jwt_identity()
+    get_user = User.query.filter_by(email=current_user).first()
+    print(get_user.serialize())
+    return jsonify(logged_in_as=current_user), 200
 
 #Aca traemos todos los characters
 @app.route('/characters', methods=['GET'])
